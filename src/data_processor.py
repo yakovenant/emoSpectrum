@@ -167,9 +167,17 @@ def get_dataframe(args):
         args.dataroot = os.path.join(args.dataroot, "Audio/wav")
         emotion_col = "emotion_result"
         emotion_mapping = {
+            2: ["neutral", "happy"],
+            3: ["neutral", "angry", "happy"],
             4: ["neutral", "angry", "happy", "surprised"],
             5: ["neutral", "angry", "happy", "surprised", "sad"],
         }
+    elif args.dataset_name == "dusha":
+        emotion_col = "emotion"
+        emotion_mapping = {
+            2: ["sad", "positive"],
+            3: ["neutral", "sad", "positive"],
+            4: ["neutral", "sad", "angry", "positive"]
     else:
         raise ValueError(f"Unsupported dataset_name: {args.dataset_name}")
     
@@ -190,6 +198,13 @@ def get_dataframe(args):
     elif args.dataset_name == "emotiontalk":
         df_filtered = df_filtered.rename(columns={'file_path': 'audio_path', emotion_col: 'emotion'})
         df_filtered = df_filtered[['audio_path', 'emotion']]
+    # Prepare DUSHA
+    elif args.dataset_name == "dusha":
+        df_filtered['audio_path'] = [a.get('path', 'unknown') for a in df_filtered['audio']]
+        df_filtered['audio'] = [a.get('bytes', 'unknown') for a in df_filtered['audio']]
+        df_filtered['emotion'] = df_filtered['emotion'].tolist()
+        keep_cols = ['audio_path', 'audio', 'emotion']
+        df_filtered = df_filtered[[c for c in keep_cols if c in df_filtered.columns]]
     
     # Check the number of unique emotions
     unique_emotions = set(df_filtered['emotion'])
