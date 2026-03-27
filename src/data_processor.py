@@ -13,6 +13,7 @@ from utils import custom_print
 RANDOM_SEED = 678
 torch.manual_seed(RANDOM_SEED)
 
+
 class EmotionDataset(Dataset, BackboneSFM):
     """
     Args:
@@ -140,7 +141,6 @@ def get_dataloader(dataset, batch_size, n_workers, shuffle=True):
 
 
 def get_dataframe(args):
-
     """
     Load and prepare DataFrame.
     Args:
@@ -178,6 +178,7 @@ def get_dataframe(args):
             2: ["sad", "positive"],
             3: ["neutral", "sad", "positive"],
             4: ["neutral", "sad", "angry", "positive"]
+        }
     else:
         raise ValueError(f"Unsupported dataset_name: {args.dataset_name}")
     

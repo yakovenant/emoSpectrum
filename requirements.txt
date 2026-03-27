@@ -1,0 +1,13 @@
+# pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+accelerate==1.6.0
+transformers==4.51.3
+numpy==2.2.5
+librosa==0.11.0
+torch==2.6.0+cu124
+torchaudio==2.6.0+cu124
+torchvision==0.21.0+cu124
+tqdm==4.67.1
+pandas==2.2.3
+datasets==3.5.1
+scikit-learn==1.6.1
+matplotlib==3.10.1
