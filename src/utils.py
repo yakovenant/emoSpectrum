@@ -25,10 +25,10 @@ def download_data(repo_id, save_dir):
 
 if __name__ == "__main__":
   
-  dataset_name = "dusha"
-  data_root = "D:/data/"
+  dataset_name = "AbstractTTS/iemocap" # xbgoose/dusha
+  data_root = "/media/ssd/datasets"
   print(f"Download dataset {dataset_name} to {data_root}...")
   download_data(
-      repo_id=os.path.join("xbgoose", dataset_name),
+      repo_id=dataset_name,
       save_dir=os.path.join(data_root, dataset_name))
   print("\nDONE!")
