@@ -25,14 +25,13 @@ N_WORKERS = 0
 np.random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
 
-PRINT_LOG = []
 
 @dataclass
 class Hparams:
     device = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
-    dataset_name: str = "iemocap" # iemocap, emotiontalk, dusha
-    feature_extractor_name: str = "baselines/hubert-base"
-    model_name: str = "baselines/wavlm-base" # "baselines/wavlm-base", "baselines/hubert-base", "baselines/wav2vec2-base"
+    dataset_name: str = "AbstractTTS/iemocap" # iemocap, emotiontalk, dusha
+    feature_extractor_name: str = "backbones/facebook/wav2vec2-base"
+    model_name: str = "backbones/facebook/wav2vec2-base" # "baselines/wavlm-base", "baselines/hubert-base", "baselines/wav2vec2-base"
     adapter: str = "hybrid_probing" # linear, mlp, hybrid, linear_probing, hybrid_probing
     projector_out_dim: int = 128 # None, 128
     fusion_method: str = "gff" # None=Last, mean=Avg, tws, gff
@@ -53,7 +52,7 @@ class Hparams:
     gradual_unfreezing: bool = False # False True
     lora: bool = False # True
     augment: bool = True # False True
-    dataroot: str = "/DATA/datasets"
+    dataroot: str = "/media/ssd/datasets/"
     noise_path: str = None
     rir_path: str = None
     n_workers: int = N_WORKERS
@@ -68,7 +67,7 @@ class ModelTrainer:
         if model.params.projector_out_dim is not None:
             self.params.feat_dim = model.params.projector_out_dim
         else:
-            self.params.feat_dim = model.sfm_hidden_size
+            self.params.feat_dim = model.backbone_hidden_size
             if self.params.stat_pooling: self.params.feat_dim *= 2
         assert model.classifier[-1].in_features == self.params.feat_dim
         self.loss = self._init_loss()
@@ -82,28 +81,28 @@ class ModelTrainer:
 
                 if self.params.projector_out_dim is not None:
                     self.optimizer = self._init_optimizer([
-                        model.sfm.base_model.encoder.parameters(),
+                        model.backbone.base_model.encoder.parameters(),
                         fusion_params,
                         model.projector.parameters(),
                         model.classifier.parameters()])
                 else:
                     self.optimizer = self._init_optimizer([
-                        model.sfm.base_model.encoder.parameters(),
+                        model.backbone.base_model.encoder.parameters(),
                         fusion_params,
                         model.classifier.parameters()])
             else:
                 if self.params.projector_out_dim is not None:
                     self.optimizer = self._init_optimizer([
-                        model.sfm.base_model.encoder.parameters(),
+                        model.backbone.base_model.encoder.parameters(),
                         model.projector.parameters(),
                         model.classifier.parameters()])
                 else:
                     self.optimizer = self._init_optimizer([
-                        model.sfm.base_model.encoder.parameters(),
+                        model.backbone.base_model.encoder.parameters(),
                         model.classifier.parameters()])
         elif self.params.adapter == "linear_probing":
             self.optimizer = self._init_optimizer([
-                model.sfm.base_model.encoder.parameters(),
+                model.backbone.base_model.encoder.parameters(),
                 [model.feature_fusion],
                 model.classifier.parameters()])
         else:
@@ -142,7 +141,7 @@ class ModelTrainer:
     def _init_optimizer(self, optimizer_parameters=None):
 
         if optimizer_parameters is None:
-            optimizer_parameters = [p for p in self.sfm.parameters() if p.requires_grad]
+            optimizer_parameters = [p for p in self.backbone.parameters() if p.requires_grad]
         elif isinstance(optimizer_parameters, list):
             if len(optimizer_parameters) == 2:
                 lr_encoder = self.params.learning_rate * 0.1
@@ -424,14 +423,14 @@ class EarlyStop:
 def encoder_gradual_unfreezer(model, use_lora=False, n=0):
 
     if n == 0: # Freeze whole encoder
-        for p in model.sfm.base_model.encoder.parameters():
+        for p in model.backbone.base_model.encoder.parameters():
             if p.requires_grad: p.requires_grad = False
         custom_print("\nEncoder is frozen.")
         if use_lora:
             if model.__class__.__name__ == 'PeftModel':
                 # Use PEFT
                 module_idx = 0
-                for module in model.sfm.base_model.encoder.modules():
+                for module in model.backbone.base_model.encoder.modules():
                     if hasattr(module, 'lora_A') and hasattr(module, 'lora_B'):
                         module.lora_A.requires_grad = False
                         module.lora_B.requires_grad = False
@@ -450,16 +449,16 @@ def encoder_gradual_unfreezer(model, use_lora=False, n=0):
         for p in model.classifier.parameters():
             p.requires_grad = True
     else: # Unfreeze the last n layers
-        total_layers = len(model.sfm.encoder.layers)
+        total_layers = len(model.backbone.encoder.layers)
         if n > total_layers:
             custom_print("Warning: number of unfreezing layers > total number of layers! All encoder will be unfrozen.")
             n = total_layers
-        layers_to_unfreeze = model.sfm.base_model.encoder.layers[-n:]
+        layers_to_unfreeze = model.backbone.base_model.encoder.layers[-n:]
         for cur_layer in layers_to_unfreeze:
             for p in cur_layer.parameters():
                 p.requires_grad = True
         # Unfreeze final LayerNorm
-        for p in model.sfm.base_model.encoder.layer_norm.parameters():
+        for p in model.backbone.base_model.encoder.layer_norm.parameters():
             p.requires_grad = True
         custom_print(f"\n{n} upper layers of the encoder have been unfreezed.")
 
@@ -539,7 +538,7 @@ def model_evaluate(model, trainer, dataloader, report_dict=False):
 
 def main(args):
 
-    def training_loop(train_params, model=None, load_modelname=None):
+    def _training_loop(train_params, model=None, load_modelname=None):
         """MAIN TRAINING LOOP"""
 
         if load_modelname is not None:
@@ -566,10 +565,10 @@ def main(args):
                     n_param_ws = sum(p.numel() for p in model.feature_fusion.parameters())
             else:
                 n_param_ws = 0
-            for p in model.sfm.parameters():
+            for p in model.backbone.parameters():
                 p.requires_grad = False
-            n_param_enc = sum(p.numel() for p in model.sfm.parameters() if p.requires_grad)
-            model.sfm.eval()
+            n_param_enc = sum(p.numel() for p in model.backbone.parameters() if p.requires_grad)
+            model.backbone.eval()
             for p in model.projector.parameters():
                 p.requires_grad = False
             n_param_proj = sum(p.numel() for p in model.projector.parameters() if p.requires_grad)
@@ -600,7 +599,13 @@ def main(args):
             if load_modelname is None: # epoch % 2 == 0:
                 print("\nEmbeddings distribution analysis...")
                 sep_ratio, intra_dist = plot_embeddings_with_dataloader(
-                    model, test_loader, args.save_model_dir+f"/embeddings_{train_params["training_stage"]}_{epoch}.png", embedding_reducer, label_encoder) # val_loader
+                    model, 
+                    test_loader, # val_loader
+                    args.save_model_dir + f"/embeddings_{train_params['training_stage']}_{epoch}.png", 
+                    embedding_reducer, 
+                    label_encoder
+                )
+
                 separation_log.append([sep_ratio, intra_dist])
             # Freezing encoder and LoRA
             if args.lora and args.n_tolerance * 2 <= len(train_loss_log):
@@ -609,7 +614,7 @@ def main(args):
                 args.lora = False
                 train_params["training_stage"] += 1
 
-            custom_print(f"\n{time.strftime("%Y-%m-%d %H:%M:%S")}, EPOCH {epoch+1}/{args.num_epochs}\n")
+            custom_print(f"\n{time.strftime('%Y-%m-%d %H:%M:%S')}, EPOCH {epoch+1}/{args.num_epochs}\n")
             # Training
             train_loss, train_acc = model_train(model, trainer, train_loader)
             assert not np.isnan(train_loss), f"Train loss is {train_loss}"
@@ -648,7 +653,7 @@ def main(args):
                         test_f1_log.append(f1_avg_test)
 
                         if max(test_f1_log) <= test_f1_log[-1]:
-                            save_model_name = args.save_model_dir+f"/model_{train_params["training_stage"]}_{epoch+1}.pt"
+                            save_model_name = args.save_model_dir+f"/model_{train_params['training_stage']}_{epoch+1}.pt"
                             torch.save(model.state_dict(), save_model_name)
                             custom_print("Save improved model!\n")
                             train_params['count_no_improv'] = 0
@@ -746,7 +751,7 @@ def main(args):
                         train_params['training_stop'] = False
                         overfit_checker = EarlyStop(tolerance=args.n_tolerance, min_delta=0.1)
                         custom_print("=" * 50)
-                        custom_print(f"\nStart training stage {train_params["training_stage"]}")
+                        custom_print(f"\nStart training stage {train_params['training_stage']}")
                     else: # на всякий случай
                         #last_epoch(train_loss_log, val_loss_log, lr_log, separation_log, epoch_fin, training_stage, args.save_model_dir)
                         break
@@ -783,16 +788,16 @@ def main(args):
     def _undersample_group(group):
         return group.sample(n=min_class_size, replace=False, random_state=RANDOM_SEED)
 
-    ############################################################# MAIN ##################################################################
+    # MAIN ######################################################################################################################
 
-    args.save_model_dir = 'experiments/' + args.dataset_name + '/' + str(datetime.now()).replace(' ', '_').replace(':', '').split('.')[0]
-    if not os.path.exists(args.save_model_dir):
-        os.makedirs(args.save_model_dir)
+    args.save_model_dir = 'exps/' + args.dataset_name + '/' + str(datetime.now()).replace(' ', '_').replace(':', '').split('.')[0]
+    dataset_name = args.dataset_name.split('/')[-1]
     custom_print(f"Save results directory: {args.save_model_dir}")
+    if not os.path.exists(args.save_model_dir): os.makedirs(args.save_model_dir)
 
     df = get_dataframe(args)
 
-    plot_data_hist(data=df['emotion'].value_counts(), title=f'"{args.dataset_name}" dataset distribution')
+    plot_data_hist(data=df['emotion'].value_counts(), title=f'"{dataset_name}" dataset distribution') # TODO: save fig
 
     if args.w_classes:
         if 1: # Compute class weights
@@ -802,7 +807,7 @@ def main(args):
                 y=df['label'].values)
             c_w = torch.tensor(class_weights, dtype=torch.float32).to(args.device)
         else: # Use constants
-            if args.dataset_name == "iemocap" and args.num_classes == 4:
+            if dataset_name == "iemocap" and args.num_classes == 4:
                 c_w = torch.tensor([1.0, 1.5, 1.6, 1.0], dtype=torch.float32).to(args.device)
             else:
                 raise Exception("Wrong class!")
@@ -820,7 +825,7 @@ def main(args):
             custom_print(f"{k}: {v} files")
         data_len_cut = df['emotion'].value_counts()
         data_compare = pd.DataFrame({'Original': data_len_origin, 'Undersampled': data_len_cut})
-        plot_data_hist(data=data_compare, title=f'Balanced "{args.dataset_name}" dataset distribution')
+        plot_data_hist(data=data_compare, title=f'Balanced "{dataset_name}" dataset distribution')
 
     custom_print(f"\nClass distribution in full dataframe:\n{df['label'].value_counts().sort_index()}")
     # Create Datasets for full Dataframe splits
@@ -834,8 +839,8 @@ def main(args):
     test_loader = get_dataloader(ds_test, args.batch_size, args.n_workers) # get_dataloader(dataset_full, args.batch_size, args.n_workers)
 
     model = make_model(args)
-    custom_print(f"\nTotal number of model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
 
+    custom_print(f"\nTotal number of model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
     if (args.freezing_encoder or args.gradual_unfreezing):
         assert not args.lora, "To freeze or unfreeze encoder manually, args.lora should be False!"
         model = encoder_gradual_unfreezer(model, use_lora=False)
@@ -864,7 +869,7 @@ def main(args):
     # Run main phase of training
     custom_print("\nRUN TRAINING...\n")
     model.train()
-    trained_modelname, train_params = training_loop(train_params, model)
+    trained_modelname, train_params = _training_loop(train_params, model)
 
     if args.projector_out_dim is not None:
         # Reset train_params
@@ -876,7 +881,7 @@ def main(args):
 
         # Run 2nd phase of training
         custom_print("\nSECOND TRAINING PHASE...\n")
-        trained_modelname, _ = training_loop(train_params, load_modelname=trained_modelname)
+        trained_modelname, _ = _training_loop(train_params, load_modelname=trained_modelname)
         custom_print(f"\nFinal model: {trained_modelname}")
 
     return trained_modelname, train_params
@@ -893,4 +898,4 @@ if __name__ == "__main__":
     custom_print("Training parameters:")
     custom_print(f"Base model: {args.model_name}\nTop k layers aggregation: {args.topk_layers}\nLoss: {args.loss_fn}\nBatch size: {args.batch_size}\nAugmentation: {args.augment}\n")
     saved_model_name = main(args)
-    custom_print(f"\nDONE!\nSaved model name: {saved_model_name}")
+    print(f"\nDONE!\nSaved model name: {saved_model_name}")

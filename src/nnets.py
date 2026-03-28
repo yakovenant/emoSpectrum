@@ -170,7 +170,7 @@ class AdapterMLP(BackboneSFM):
     def __init__(self, params):
 
         super().__init__(params)
-        hidden_size = self.sfm.config.hidden_size
+        hidden_size = self.backbone.config.hidden_size
         self.dropout = nn.Dropout(0.1)
         self.classifier = nn.Sequential(
             nn.Linear(hidden_size, hidden_size//2), # 768 --> 384
@@ -249,17 +249,17 @@ class ProbingAdapterHybrid(BackboneSFM):
     def __init__(self, params):
 
         super().__init__(params)
-        for p in self.sfm.parameters():
+        for p in self.backbone.parameters():
             p.requires_grad = False
         self.fusion_method = params.fusion_method
-        self.sfm_num_layers = self.sfm.config.num_hidden_layers + 1
-        self.sfm_hidden_size = self.sfm.config.hidden_size
+        self.backbone_num_layers = self.backbone.config.num_hidden_layers + 1
+        self.backbone_hidden_size = self.backbone.config.hidden_size
         if self.fusion_method is not None:
             self.topk = params.topk_layers
-            num_weights = len(self.topk) if self.topk is not None else self.sfm_num_layers
+            num_weights = len(self.topk) if self.topk is not None else self.backbone_num_layers
             if self.fusion_method == "gff": # Gated Feature Fusion
                 custom_print("\nInit Gated Feature Fusion...")
-                self.feature_fusion = nn.Linear(self.sfm_hidden_size, num_weights) # gff_gate
+                self.feature_fusion = nn.Linear(self.backbone_hidden_size, num_weights) # gff_gate
                 nn.init.zeros_(self.feature_fusion.weight)
                 nn.init.zeros_(self.feature_fusion.bias)
             elif self.fusion_method == "tws": # Trainable weighted sum
@@ -270,7 +270,7 @@ class ProbingAdapterHybrid(BackboneSFM):
             self.projector = ProjectorNonLinear(self.params)
             clf_input_dim = self.params.projector_out_dim
         else:
-            clf_input_dim = self.sfm_hidden_size
+            clf_input_dim = self.backbone_hidden_size
             if params.stat_pooling: clf_input_dim *= 2
         custom_print("\nInit Linear classifier...")
         self.classifier = nn.Sequential(
@@ -326,28 +326,32 @@ def make_model(args):
     """
     custom_print("\nModel initialization...")
     if args.topk_layers: # TODO
-        if args.dataset_name == "iemocap":
+        dataset_name = args.dataset_name.split('/')[-1]
+        if dataset_name == "iemocap":
             args.topk_layers = [0, 6, 7, 9, 10, 11]
-        elif args.dataset_name == "emotiontalk":
+        elif dataset_name == "emotiontalk":
             args.topk_layers = [0, 5, 6, 7, 12]
         else:
-            raise Exception(f"Config conflict: top k layers aggregation indexces for {args.dataset_name} is unknown.")
+            raise Exception(f"Config conflict: top k layers aggregation indexces for {dataset_name} is unknown.")
         custom_print(f"\nIndexes of top k encoder layers aggregation from linear probing: {args.topk_layers}")
     else:
         args.topk_layers = None
         custom_print(f"\nUse all encoder layers to compute the output embedding.")
 
     adapter_map = {
-        "linear": AdapterLinear,
-        "mlp": AdapterMLP,
-        "hybrid": AdapterHybrid,
-        "hybrid_probing": ProbingAdapterHybrid # projector + classifier
+        "linear": AdapterLinear(args),
+        "mlp": AdapterMLP(args),
+        "hybrid": AdapterHybrid(args),
+        "hybrid_probing": ProbingAdapterHybrid(args) # projector + classifier
     }
-    adapter_type = adapter_map.get(args.adapter)
-    
+
+    '''adapter_type = adapter_map.get(args.adapter)
     if adapter_type:
         model = adapter_type(args)
     else:
-        raise ValueError(f"Unknown adapter type:{args.adapter}")
-    custom_print(f"Initialized adapter: {args.adapter}")
+        raise ValueError(f"Unknown adapter type:{args.adapter}")'''
+    
+    model = adapter_map.get(args.adapter)
+    
+    custom_print(f"\nInitialized adapter: {args.adapter}")
     return model.to(model.params.device)

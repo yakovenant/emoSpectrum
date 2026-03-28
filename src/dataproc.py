@@ -152,8 +152,9 @@ def get_dataframe(args):
     custom_print("\nLoad data...")
     ds = load_dataset(args.dataroot)
     df_full = pd.concat([split.to_pandas() for split in ds.values()], ignore_index=True)
+    dataset_name = args.dataset_name.split('/')[-1]
     
-    if args.dataset_name == "iemocap":
+    if dataset_name == "iemocap":
         emotion_col = "major_emotion"
         emotion_mapping = {
             2: ["happy", "sad"],
@@ -163,7 +164,7 @@ def get_dataframe(args):
             6: ["frustrated", "excited", "neutral", "angry", "sad", "happy"],
             8: ["frustrated", "excited", "neutral", "angry", "sad", "happy", "surprise", "fear"]
         }
-    elif args.dataset_name == "emotiontalk":
+    elif dataset_name == "emotiontalk":
         args.dataroot = os.path.join(args.dataroot, "Audio/wav")
         emotion_col = "emotion_result"
         emotion_mapping = {
@@ -172,7 +173,7 @@ def get_dataframe(args):
             4: ["neutral", "angry", "happy", "surprised"],
             5: ["neutral", "angry", "happy", "surprised", "sad"],
         }
-    elif args.dataset_name == "dusha":
+    elif dataset_name == "dusha":
         emotion_col = "emotion"
         emotion_mapping = {
             2: ["sad", "positive"],
@@ -191,16 +192,16 @@ def get_dataframe(args):
     df_filtered = df_full[df_full[emotion_col].isin(selected_emotions)]
     
     # Prepare IEMOCAP
-    if args.dataset_name == "iemocap":
+    if dataset_name == "iemocap":
         df_filtered = df_filtered.rename(columns={'file': 'audio_path', emotion_col: 'emotion'})
         keep_cols = ['audio_path', 'audio', 'emotion']
         df_filtered = df_filtered[[c for c in keep_cols if c in df_filtered.columns]]
     # Prepare EMOTIONTALK
-    elif args.dataset_name == "emotiontalk":
+    elif dataset_name == "emotiontalk":
         df_filtered = df_filtered.rename(columns={'file_path': 'audio_path', emotion_col: 'emotion'})
         df_filtered = df_filtered[['audio_path', 'emotion']]
     # Prepare DUSHA
-    elif args.dataset_name == "dusha":
+    elif dataset_name == "dusha":
         df_filtered['audio_path'] = [a.get('path', 'unknown') for a in df_filtered['audio']]
         df_filtered['audio'] = [a.get('bytes', 'unknown') for a in df_filtered['audio']]
         df_filtered['emotion'] = df_filtered['emotion'].tolist()

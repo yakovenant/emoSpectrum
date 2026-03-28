@@ -1,10 +1,9 @@
 import os
 from huggingface_hub import HfApi
 
+PRINT_LOG = []
 
-global PRINT_LOG
-
-def custom_prit(text_message):
+def custom_print(text_message):
     print(text_message)
     if not isinstance(text_message, str): raise Exception("Wrong str data type.")
     PRINT_LOG.append(text_message)
@@ -19,16 +18,16 @@ def download_data(repo_id, save_dir):
   api = HfApi()
   api.snapshot_download(
       repo_id=repo_id,
-      repo_type="dataset",
+      #repo_type="dataset",
       local_dir=save_dir)
 
 
 if __name__ == "__main__":
   
-  dataset_name = "AbstractTTS/iemocap" # xbgoose/dusha
-  data_root = "/media/ssd/datasets"
-  print(f"Download dataset {dataset_name} to {data_root}...")
+  data_source = "facebook/wav2vec2-base" # AbstractTTS/iemocap, xbgoose/dusha
+  data_root = "/home/iakovenant/PycharmProjects/emoSpectrum/backbones" # "/media/ssd/datasets"
+  print(f"Download {data_source} to {data_root}...")
   download_data(
-      repo_id=dataset_name,
-      save_dir=os.path.join(data_root, dataset_name))
+      repo_id=data_source,
+      save_dir=os.path.join(data_root, data_source))
   print("\nDONE!")
