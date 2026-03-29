@@ -9,7 +9,7 @@ from tqdm import tqdm
 from utils import custom_print
 
 
-def plot_data_hist(data, title):
+def plot_data_hist(data, title, save_fig_to=None):
 
     data.plot(kind='bar', figsize=(8, 5)) # width=0.5, dpi=600
     plt.title(title)
@@ -17,6 +17,9 @@ def plot_data_hist(data, title):
     plt.ylabel('Number of samples')
     plt.xticks(rotation=0)
     plt.legend()
+    if save_fig_to: 
+        plt.savefig(os.path.join(save_fig_to, title), bbox_inches='tight', dpi=600)
+        print(f"\nHist figure saved to: {save_fig_to}")
     plt.show()
 
 

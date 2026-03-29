@@ -741,7 +741,8 @@ def main(args):
                     #last_epoch(train_loss_log, val_loss_log, lr_log, separation_log, epoch_fin, training_stage, args.save_model_dir)
                     break
                 else: # reset hyperparameters for the new stage of encoder unfreezing
-                    if len(separation_log) > 1 and separation_log[-1][0] - separation_log[-2][0] < 1e-3:  #separation_log[-1] <= separation_log[-2]: # separation_log[-1] > np.mean(separation_log[:-2]):
+                    if len(separation_log) > 1 and separation_log[-1][0] - separation_log[-2][0] < 1e-3:  
+                        #separation_log[-1] <= separation_log[-2]: # separation_log[-1] > np.mean(separation_log[:-2]):
                         custom_print(f"\nSeparation Ratio didn't improve:{separation_log[-1]}")
                         train_params['training_stop_counter'] += 1
                     if args.gradual_unfreezing:
@@ -797,7 +798,10 @@ def main(args):
 
     df = get_dataframe(args)
 
-    plot_data_hist(data=df['emotion'].value_counts(), title=f'"{dataset_name}" dataset distribution') # TODO: save fig
+    plot_data_hist(
+        data=df['emotion'].value_counts(), 
+        title=f'"{dataset_name}" dataset distribution', 
+        save_fig_to=args.save_model_dir)
 
     if args.w_classes:
         if 1: # Compute class weights
@@ -825,7 +829,10 @@ def main(args):
             custom_print(f"{k}: {v} files")
         data_len_cut = df['emotion'].value_counts()
         data_compare = pd.DataFrame({'Original': data_len_origin, 'Undersampled': data_len_cut})
-        plot_data_hist(data=data_compare, title=f'Balanced "{dataset_name}" dataset distribution')
+        plot_data_hist(
+            data=data_compare, 
+            title=f'"{dataset_name}" balanced dataset distribution', 
+            save_fig_to=args.save_model_dir)
 
     custom_print(f"\nClass distribution in full dataframe:\n{df['label'].value_counts().sort_index()}")
     # Create Datasets for full Dataframe splits
@@ -863,7 +870,7 @@ def main(args):
     }
 
     # Init dimension reducer and label encoder for visualizations
-    embedding_reducer = TSNE(n_components=2, random_state=678)
+    embedding_reducer = TSNE(n_components=2, random_state=RANDOM_SEED)
     label_encoder = LabelEncoder()
 
     # Run main phase of training
