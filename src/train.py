@@ -1,5 +1,6 @@
 import os
 import time
+import argparse
 import torch
 import torch.nn as nn
 import numpy as np
@@ -9,7 +10,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import classification_report, f1_score
 from sklearn.manifold import TSNE
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime
 from tqdm import tqdm
 from losses import AdaptiveCosineCenterCrossEntropyLoss, CosineCenterCrossEntropyLoss, CosCrossEntropyLoss
@@ -894,9 +895,26 @@ def main(args):
     return trained_modelname, train_params
 
 
+def get_args():
+    parser = argparse.ArgumentParser(description="Training Configuration")
+    for field in fields(Hparams):
+        field_type = field.type
+        field_name = field.name
+        default_value = field.default
+
+        if field_type == bool:
+            parser.add_argument(f'--{field_name}', action='store_true', default=default_value)
+            parser.add_argument(f'--no-{field_name}', action='store_false', dest=field_name)
+        else:
+            parser.add_argument(f'--{field_name}', type=field_type, default=default_value)
+
+    args = parser.parse_args()
+    return Hparams(**vars(args))
+
+
 if __name__ == "__main__":
 
-    args = Hparams()
+    args = get_args() # Hparams()
     args.dataroot = os.path.join(args.dataroot, args.dataset_name)
     assert args.num_epochs > 1
 
